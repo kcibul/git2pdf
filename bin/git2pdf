@@ -12,6 +12,8 @@ class Git2PdfBash < Thor
   option :organisation, aliases: :o
   option :labels, aliases: :l
   option :from_number, aliases: :f
+  option :exclude_pull_requests, :type => :boolean
+  option :milestone, aliases: :m, :default => ""
 
   def gen(repositories="")
     repos = repositories.split(',').collect { |r| r.strip }
@@ -30,8 +32,8 @@ class Git2PdfBash < Thor
       pass = STDIN.noecho(&:gets)
       pass = pass.strip.gsub(/\n/,'')
     end
-
-    g = Git2Pdf.new repos: repos, basic_auth: [options[:user],pass], org: options[:organisation], user: options[:user], api: options[:api], labels: options[:labels], from_number: options[:from_number]
+puts "using '#{options[:milestone]}'"
+    g = Git2Pdf.new repos: repos, basic_auth: [options[:user],pass], org: options[:organisation], user: options[:user], api: options[:api], labels: options[:labels], from_number: options[:from_number], exclude_pull_requests: options[:exclude_pull_requests], milestone: options[:milestone]
     done = g.execute
     puts "\n#{done} cards output to issues.pdf"
   end

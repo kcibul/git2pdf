@@ -12,8 +12,10 @@ class Git2Pdf
     @basic_auth = options[:basic_auth] || nil
     @org = options[:org] || nil
     @api = options[:api] || 'https://api.github.com'
-    @labels = "&labels=#{options[:labels]}" || ''
+    @labels = options[:labels] || ''
     @from_number = options[:from_number] || nil
+    @exclude_pull_requests = options[:exclude_pull_requests] || false
+    @milestone = options[:milestone] || ''
   end
 
   def execute
@@ -24,14 +26,12 @@ class Git2Pdf
   def get_issues
     batch = []
     self.repos.each do |repo|
-      #json = `curl -u#{auth} https://api.github.com/repos/pocketworks/repo/issues?per_page=100 | jq '.[] | {state: .state, milestone: .milestone.title, created_at: .created_at, title: .title, number: .number, labels: [.labels[].name]}'`
-      json = ""
-      if @org
-        json = open("#{@api}/repos/#{@org}/#{repo}/issues?per_page=200&state=open#{@labels}", :http_basic_authentication => basic_auth).read
-      else
-        # for stuff like bob/stuff
-        json = open("#{@api}/repos/#{repo}/issues?per_page=200&state=open#{@labels}", :http_basic_authentication => basic_auth).read
-      end
+      full_repository = @org ? "#{@org}/#{repo}" : repo
+      labels_stanza = @labels.empty? ? "" : "&labels=#{@labels}"
+      milestone_stanza = @milestone.empty? ? "" : "&milestone=#{@milestone}"
+      url = "#{@api}/repos/#{full_repository}/issues?per_page=200&state=open#{labels_stanza}#{milestone_stanza}"
+
+      json = open(url, :http_basic_authentication => basic_auth).read
 
       hash = JSON.parse(json)
 
@@ -43,17 +43,21 @@ class Git2Pdf
         end
         labels = val["labels"].collect { |l| l["name"].upcase }.join(', ')
         type = ""
+        type = "USER" if labels =~ /UserSupport/i #not billable
+        type = "GOTC" if labels =~ /GreenFriends/i #not billable
         type = "BUG" if labels =~ /bug/i #not billable
         type = "FEATURE" if labels =~ /feature/i #billable
         type = "ENHANCEMENT" if labels =~ /enhancement/i #billable
-        type = "AMEND" if labels =~ /amend/i #not billable
         type = "TASK" if labels =~ /task/i #not billable
 
         milestone = val["milestone"] ? val["milestone"]["title"] : ""
 
         #labels.include?(['BUG','FEATURE','ENHANCEMENT','QUESTION'])
         hash = {short_title: repo, ref: "#{val["number"]}", long_title: "#{val["title"]}", type: type, due: "", labels: labels, milestone: "#{milestone}"}
-        batch << hash
+        
+        if not @exclude_pull_requests or (@exclude_pull_requests and not val["pull_request"])
+          batch << hash
+        end
       end
     end
 
@@ -130,6 +134,8 @@ class Git2Pdf
         fill_color "FBF937" if issue[:type] == "FEATURE"
         fill_color "F5B383" if issue[:type] == "AMEND"
         fill_color "FBF937" if issue[:type] == "ENHANCEMENT"
+        fill_color "F4D03F" if issue[:type] == "USER"
+        fill_color "196F3D" if issue[:type] == "GOTC"
 
         if issue[:type] and issue[:type] != ""
           fill{rectangle([0,220], margin-10, 220)}          
